@@ -87,7 +87,7 @@ func (r *rabbitmqConn) connect(config *amqp.Config) error {
 	r.connected = true
 	r.Unlock()
 
-	// 创建重连携程
+	// 创建重连协程
 	go r.reconnect(config)
 
 	return nil

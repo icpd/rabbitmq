@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"log"
 
-	"gitlab.test.com/common/rabbitmq"
+	"github.com/icpd/rabbitmq"
 )
 
 func main() {
@@ -69,7 +69,7 @@ package main
 import (
 	"log"
 
-	"gitlab.test.com/common/rabbitmq"
+	"github.com/icpd/rabbitmq"
 )
 
 func main() {

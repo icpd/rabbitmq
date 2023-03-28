@@ -5,7 +5,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"gitlab.test.com/common/rabbitmq"
+	"github.com/icpd/rabbitmq"
 )
 
 func main() {

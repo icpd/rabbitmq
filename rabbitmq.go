@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -47,6 +46,14 @@ func (r *Rabbitmq) Connect() error {
 
 	r.conn = newRabbitmqConn(r.url)
 	return r.conn.Connect(&config)
+}
+
+func (r *Rabbitmq) Close() error {
+	if r.conn == nil {
+		return errors.New("not connected")
+	}
+
+	return r.conn.Close()
 }
 
 // Exchange 创建交换机

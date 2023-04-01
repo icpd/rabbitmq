@@ -1,8 +1,9 @@
 # rabbitmq
 
-Encapsulation for `github.com/rabbitmq/amqp091-go`.
+Wrap `github.com/rabbitmq/amqp091-go` to enable automatic reconnection in case of disconnection.
 
-## Purpose
+
+## Feature
 
 - Add automatic reconnection handling
 - Retry sending messages when failed

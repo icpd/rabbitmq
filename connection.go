@@ -37,9 +37,11 @@ type rabbitmqConn struct {
 
 	// 内部状态维护 section
 	sync.Mutex
-	connected      bool
-	close          chan struct{}
-	waitConnection chan struct{}
+	connected       bool
+	close           chan struct{}
+	waitConnection  chan struct{}
+	connCloseNotify chan *amqp.Error
+	chanCloseNotify chan *amqp.Error
 }
 
 // ExchangeOptions rabbitmq 交换机
@@ -94,12 +96,23 @@ func (r *rabbitmqConn) connect(config *amqp.Config) error {
 }
 
 func (r *rabbitmqConn) tryConnect(config *amqp.Config) (err error) {
-	r.Connection, err = amqp.DialConfig(r.url, *config)
+	if r.Connection == nil || r.Connection.IsClosed() {
+		r.Connection, err = amqp.DialConfig(r.url, *config)
+		if err != nil {
+			return
+		}
+
+		r.connCloseNotify = make(chan *amqp.Error, 1)
+		r.Connection.NotifyClose(r.connCloseNotify)
+	}
+
+	r.Channel, err = newRabbitChannel(r.Connection)
 	if err != nil {
 		return
 	}
 
-	r.Channel, err = newRabbitChannel(r.Connection)
+	r.chanCloseNotify = make(chan *amqp.Error, 1)
+	r.Channel.channel.NotifyClose(r.chanCloseNotify)
 	return
 }
 
@@ -111,10 +124,8 @@ func (r *rabbitmqConn) reconnect(config *amqp.Config) {
 		}
 	}()
 
-	// 第一次连接不需要重连
-	var first = true
 	for {
-		if !first {
+		if !r.connected { // 第一次 connected 为 true, 不需要重连
 			b := NewForeverBackoff()
 			for {
 				err := r.tryConnect(config)
@@ -122,7 +133,7 @@ func (r *rabbitmqConn) reconnect(config *amqp.Config) {
 					break
 				}
 
-				// 退避重试
+				// 等待重试
 				log.Printf("Error: rabbitmq reconnect: %v", err)
 				b.Wait()
 				continue
@@ -135,44 +146,28 @@ func (r *rabbitmqConn) reconnect(config *amqp.Config) {
 			// 通知等待的协程链接创建好了
 			close(r.waitConnection)
 			log.Println("Info: rabbitmq reconnect success")
-		} else {
-			first = false
 		}
-
-		// connect 断开通知
-		connNotifyClose := make(chan *amqp.Error, 1)
-		r.Connection.NotifyClose(connNotifyClose)
-
-		// channel 断开通知
-		chanNotifyClose := make(chan *amqp.Error, 1)
-		r.Channel.channel.NotifyClose(chanNotifyClose)
 
 		// 监听关闭事件
 		select {
 		case <-r.close:
 			return
 
-		case err := <-connNotifyClose: // 连接关闭通知
+		case err := <-r.connCloseNotify: // 连接关闭通知
 			log.Printf("Warning: connection notify close: %v", err)
 			r.Lock()
 			r.connected = false
 			r.waitConnection = make(chan struct{})
 			r.Unlock()
-			connNotifyClose = nil
+			r.connCloseNotify = nil
 
-		case err := <-chanNotifyClose: // channel关闭通知
+		case err := <-r.chanCloseNotify: // channel关闭通知
 			log.Printf("Warning: channel notify close: %v", err)
 			r.Lock()
 			r.connected = false
 			r.waitConnection = make(chan struct{})
-			// channel 关闭时，连接可能没有关闭。但 reconnect 会重新建立新的连接，所以这里手动关闭一旧连接避免长连接资源占用
-			if !r.Connection.IsClosed() {
-				if err := r.Connection.Close(); err != nil {
-					log.Printf("Waring: rabbitmq connection close: %v", err)
-				}
-			}
 			r.Unlock()
-			chanNotifyClose = nil
+			r.chanCloseNotify = nil
 		}
 	}
 }

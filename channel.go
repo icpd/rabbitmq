@@ -10,7 +10,7 @@ import (
 
 type rabbitmqChannel struct {
 	connection *amqp.Connection
-	channel    *amqp.Channel
+	rawChannel *amqp.Channel
 }
 
 func newRabbitChannel(conn *amqp.Connection) (*rabbitmqChannel, error) {
@@ -26,12 +26,12 @@ func newRabbitChannel(conn *amqp.Connection) (*rabbitmqChannel, error) {
 }
 
 func (r *rabbitmqChannel) Connect() (err error) {
-	r.channel, err = r.connection.Channel()
+	r.rawChannel, err = r.connection.Channel()
 	return
 }
 
 func (r *rabbitmqChannel) DeclareExchange(ex ExchangeOptions) error {
-	return r.channel.ExchangeDeclare(
+	return r.rawChannel.ExchangeDeclare(
 		ex.Name,         // name
 		string(ex.Type), // kind
 		ex.Durable,      // durable
@@ -45,7 +45,7 @@ func (r *rabbitmqChannel) DeclareExchange(ex ExchangeOptions) error {
 // DeclareDurableQueue  持久化队列
 // rabbitmq服务重启后，队列数据不会丢失；消费者连接时，队列也不会被删除
 func (r *rabbitmqChannel) DeclareDurableQueue(queue string, args amqp.Table) (err error) {
-	_, err = r.channel.QueueDeclare(
+	_, err = r.rawChannel.QueueDeclare(
 		queue, // name
 		true,  // durable
 		false, // autoDelete
@@ -60,7 +60,7 @@ func (r *rabbitmqChannel) DeclareDurableQueue(queue string, args amqp.Table) (er
 // DeclareQueue 非持久化队列
 // rabbitmq服务重启后，队列数据会丢失；消费者连接时，队列会自动删除
 func (r *rabbitmqChannel) DeclareQueue(queue string, args amqp.Table) (err error) {
-	_, err = r.channel.QueueDeclare(
+	_, err = r.rawChannel.QueueDeclare(
 		queue, // name
 		false, // durable
 		true,  // autoDelete
@@ -78,7 +78,7 @@ func (r *rabbitmqChannel) ConsumeQueue(queue string, autoAck bool) (<-chan amqp.
 		return nil, err
 	}
 
-	return r.channel.Consume(
+	return r.rawChannel.Consume(
 		queue,       // queue
 		id.String(), // consumer
 		autoAck,     // autoAck
@@ -90,7 +90,7 @@ func (r *rabbitmqChannel) ConsumeQueue(queue string, autoAck bool) (<-chan amqp.
 }
 
 func (r *rabbitmqChannel) BindQueue(queue, key, exchange string, args amqp.Table) error {
-	return r.channel.QueueBind(
+	return r.rawChannel.QueueBind(
 		queue,    // name
 		key,      // key
 		exchange, // exchange
@@ -100,11 +100,11 @@ func (r *rabbitmqChannel) BindQueue(queue, key, exchange string, args amqp.Table
 }
 
 func (r *rabbitmqChannel) Publish(ctx context.Context, exchange, key string, msg amqp.Publishing) error {
-	if r.channel == nil {
-		return errors.New("channel is nil")
+	if r.rawChannel == nil {
+		return errors.New("rawChannel is nil")
 	}
 
-	err := r.channel.PublishWithContext(ctx, exchange, key, false, false, msg)
+	err := r.rawChannel.PublishWithContext(ctx, exchange, key, false, false, msg)
 	if err != nil {
 		return err
 	}

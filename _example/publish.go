@@ -33,16 +33,10 @@ func main() {
 		Type:    rabbitmq.ExchangeTypeFanout, // 交换机类型
 		Durable: true,                        // 是否持久化
 	}
-	if err := r.Exchange(exchange1); err != nil {
-		log.Fatal(err)
-	}
 
 	exchange2 := rabbitmq.ExchangeOptions{
 		Name: "rabbitmq_test_exchange2",   // 交换机名
 		Type: rabbitmq.ExchangeTypeFanout, // 交换机类型
-	}
-	if err := r.Exchange(exchange2); err != nil {
-		log.Fatal(err)
 	}
 
 	// 发送消息前，***请确保你已经创建好了交换机**

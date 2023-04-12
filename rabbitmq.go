@@ -59,12 +59,12 @@ func (r *Rabbitmq) Close() error {
 
 // Exchange 创建交换机
 func (r *Rabbitmq) Exchange(opts ExchangeOptions) error {
-	return r.conn.Channel.DeclareExchange(opts)
+	return r.conn.DeclareExchange(opts)
 }
 
 // Publish 发布消息，如果发送失败会自动重试
 //
-// 注意：发消息前一定确保交换机成功创建。交换机不存在 amqp 并不会返回错误，而是直接关闭 rabbitmq channel
+// 注意：发消息前一定确保交换机成功创建。交换机不存在 amqp 并不会返回错误，而是直接关闭 rabbitmq rawChannel
 func (r *Rabbitmq) Publish(ctx context.Context, msg []byte, options ...Option) error {
 	opts := newOptions(options...)
 
@@ -157,7 +157,7 @@ func (r *Rabbitmq) subscribe(opts Options, fn func(amqp.Delivery)) {
 
 		log.Printf("Info: rabbitmq start consume queue: %s", opts.Queue)
 
-		// 当 rabbitmq conn 和 channel 关闭时 deliveries 都会被关闭，
+		// 当 rabbitmq conn 和 rawChannel 关闭时 deliveries 都会被关闭，
 		// 所以这里会退出循环，等待重连后重新订阅。
 		// 除以上两个情况外，就是队列被删除了，deliveries 也会被关闭，但是并不会收任何关闭通知消息。
 		for d := range deliveries {
@@ -167,7 +167,7 @@ func (r *Rabbitmq) subscribe(opts Options, fn func(amqp.Delivery)) {
 		// 观察日志发现在这里触发的事件比 chanNotifyClose 和 connNotifyClose 更快
 		// 导致在上面的 select 语句中，r.conn.waitConnection 的状态仍然是关闭状态，连接还是旧的，因此 consume 报错 continue 后正常。
 		// 所以这里休眠一会儿，减少没必要的错误
-		log.Printf("Info: rabbitmq deliverie channel closed, sleep %s and wait reconnect", r.DeliveryCloseDelay)
+		log.Printf("Info: rabbitmq deliverie rawChannel closed, sleep %s and wait reconnect", r.DeliveryCloseDelay)
 		time.Sleep(r.DeliveryCloseDelay)
 	}
 }

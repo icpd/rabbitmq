@@ -30,10 +30,9 @@ const (
 
 type rabbitmqConn struct {
 	// rabbitmq section
-	Connection      *amqp.Connection
-	Channel         *rabbitmqChannel
-	url             string
-	withoutExchange bool // 不需要交换机
+	connection *amqp.Connection
+	channel    *rabbitmqChannel
+	url        string
 
 	// 内部状态维护 section
 	sync.Mutex
@@ -42,6 +41,8 @@ type rabbitmqConn struct {
 	waitConnection  chan struct{}
 	connCloseNotify chan *amqp.Error
 	chanCloseNotify chan *amqp.Error
+
+	exchangeMap sync.Map
 }
 
 // ExchangeOptions rabbitmq 交换机
@@ -96,23 +97,31 @@ func (r *rabbitmqConn) connect(config *amqp.Config) error {
 }
 
 func (r *rabbitmqConn) tryConnect(config *amqp.Config) (err error) {
-	if r.Connection == nil || r.Connection.IsClosed() {
-		r.Connection, err = amqp.DialConfig(r.url, *config)
+	if r.connection == nil || r.connection.IsClosed() {
+		r.connection, err = amqp.DialConfig(r.url, *config)
 		if err != nil {
 			return
 		}
 
 		r.connCloseNotify = make(chan *amqp.Error, 1)
-		r.Connection.NotifyClose(r.connCloseNotify)
+		r.connection.NotifyClose(r.connCloseNotify)
 	}
 
-	r.Channel, err = newRabbitChannel(r.Connection)
+	r.channel, err = newRabbitChannel(r.connection)
 	if err != nil {
 		return
 	}
 
 	r.chanCloseNotify = make(chan *amqp.Error, 1)
-	r.Channel.channel.NotifyClose(r.chanCloseNotify)
+	r.channel.rawChannel.NotifyClose(r.chanCloseNotify)
+
+	r.exchangeMap.Range(func(_, opts any) bool {
+		if err = r.DeclareExchange(opts.(ExchangeOptions)); err != nil {
+			return false
+		}
+		return true
+	})
+
 	return
 }
 
@@ -162,7 +171,7 @@ func (r *rabbitmqConn) reconnect(config *amqp.Config) {
 			r.connCloseNotify = nil
 
 		case err := <-r.chanCloseNotify: // channel关闭通知
-			log.Printf("Warning: channel notify close: %v", err)
+			log.Printf("Warning: rawChannel notify close: %v", err)
 			r.Lock()
 			r.connected = false
 			r.waitConnection = make(chan struct{})
@@ -184,34 +193,34 @@ func (r *rabbitmqConn) Close() error {
 		r.connected = false
 	}
 
-	return r.Connection.Close()
+	return r.connection.Close()
 }
 
 func (r *rabbitmqConn) Consume(opts Options) (deliveries <-chan amqp.Delivery, err error) {
 	// 创建队列
 	if opts.DurableQueue {
-		err = r.Channel.DeclareDurableQueue(opts.Queue, nil)
+		err = r.channel.DeclareDurableQueue(opts.Queue, nil)
 	} else {
-		err = r.Channel.DeclareQueue(opts.Queue, nil)
+		err = r.channel.DeclareQueue(opts.Queue, nil)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	// 绑定消费者
-	deliveries, err = r.Channel.ConsumeQueue(opts.Queue, opts.AutoAck)
+	deliveries, err = r.channel.ConsumeQueue(opts.Queue, opts.AutoAck)
 	if err != nil {
 		return nil, err
 	}
 
 	if !opts.WithoutExchange {
 		// 创建交换机
-		if err = r.Channel.DeclareExchange(opts.Exchange); err != nil {
+		if err = r.DeclareExchange(opts.Exchange); err != nil {
 			return nil, err
 		}
 
 		// 队列与交换机绑定
-		err = r.Channel.BindQueue(opts.Queue, opts.Key, opts.Exchange.Name, nil)
+		err = r.channel.BindQueue(opts.Queue, opts.Key, opts.Exchange.Name, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -229,9 +238,23 @@ func (r *rabbitmqConn) Publish(ctx context.Context, msg amqp.Publishing, opts Op
 	case <-r.waitConnection:
 	}
 
-	if r.withoutExchange {
-		return r.Channel.Publish(ctx, "", opts.Key, msg)
+	if opts.WithoutExchange {
+		return r.channel.Publish(ctx, "", opts.Key, msg)
 	}
 
-	return r.Channel.Publish(ctx, opts.Exchange.Name, opts.Key, msg)
+	if err := r.DeclareExchange(opts.Exchange); err != nil {
+		return err
+	}
+
+	return r.channel.Publish(ctx, opts.Exchange.Name, opts.Key, msg)
+}
+
+// DeclareExchange 声明交换机，如果已经声明过则不再声明
+func (r *rabbitmqConn) DeclareExchange(opts ExchangeOptions) error {
+	if _, ok := r.exchangeMap.Load(opts.Name); ok {
+		return nil
+	}
+
+	r.exchangeMap.Store(opts.Name, opts)
+	return r.channel.DeclareExchange(opts)
 }

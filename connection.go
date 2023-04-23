@@ -116,7 +116,7 @@ func (r *rabbitmqConn) tryConnect(config *amqp.Config) (err error) {
 	r.channel.rawChannel.NotifyClose(r.chanCloseNotify)
 
 	r.exchangeMap.Range(func(_, opts any) bool {
-		if err = r.DeclareExchange(opts.(ExchangeOptions)); err != nil {
+		if err = r.ForceDeclareExchange(opts.(ExchangeOptions)); err != nil {
 			return false
 		}
 		return true
@@ -255,6 +255,12 @@ func (r *rabbitmqConn) DeclareExchange(opts ExchangeOptions) error {
 		return nil
 	}
 
+	r.exchangeMap.Store(opts.Name, opts)
+	return r.channel.DeclareExchange(opts)
+}
+
+// ForceDeclareExchange 强制声明交换机，不管是否已经声明过
+func (r *rabbitmqConn) ForceDeclareExchange(opts ExchangeOptions) error {
 	r.exchangeMap.Store(opts.Name, opts)
 	return r.channel.DeclareExchange(opts)
 }

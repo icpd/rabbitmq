@@ -50,6 +50,17 @@ func (r *Rabbitmq) Connect() error {
 	return r.conn.Connect(&config)
 }
 
+func (r *Rabbitmq) IsConnected() bool {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if r.conn == nil {
+		return false
+	}
+
+	return r.conn.connected
+}
+
 func (r *Rabbitmq) Close() error {
 	if r.conn == nil {
 		return errors.New("not connected")

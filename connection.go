@@ -266,7 +266,3 @@ func (r *rabbitmqConn) ForceDeclareExchange(opts ExchangeOptions) error {
 	r.exchangeMap.Store(opts.Name, opts)
 	return r.channel.DeclareExchange(opts)
 }
-
-func (r *rabbitmqConn) IsConnected() bool {
-	return r.connected
-}

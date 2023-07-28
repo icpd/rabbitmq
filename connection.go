@@ -267,6 +267,6 @@ func (r *rabbitmqConn) ForceDeclareExchange(opts ExchangeOptions) error {
 	return r.channel.DeclareExchange(opts)
 }
 
-func (r *rabbitmqConn) isConnected() bool {
+func (r *rabbitmqConn) IsConnected() bool {
 	return r.connected
 }

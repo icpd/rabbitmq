@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -130,6 +131,7 @@ func (r *rabbitmqConn) reconnect(config *amqp.Config) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("Panic: rabbitmq reconnect: %v", err)
+			debug.PrintStack()
 		}
 	}()
 
@@ -263,4 +265,8 @@ func (r *rabbitmqConn) DeclareExchange(opts ExchangeOptions) error {
 func (r *rabbitmqConn) ForceDeclareExchange(opts ExchangeOptions) error {
 	r.exchangeMap.Store(opts.Name, opts)
 	return r.channel.DeclareExchange(opts)
+}
+
+func (r *rabbitmqConn) isConnected() bool {
+	return r.connected
 }

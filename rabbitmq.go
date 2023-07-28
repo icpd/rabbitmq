@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -125,6 +126,7 @@ func (r *Rabbitmq) subscribe(opts Options, fn func(amqp.Delivery)) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("Panic: rabbitmq subscribe: %v", err)
+			debug.PrintStack()
 		}
 	}()
 

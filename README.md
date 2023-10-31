@@ -109,5 +109,9 @@ func main() {
 }
 
 ```
-
 For more usage examples, please refer to the `_example` directory.
+
+
+## Others
+https://github.com/wagslane/go-rabbitmq  
+https://github.com/pmorelli92/bunnify
